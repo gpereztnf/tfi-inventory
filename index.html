@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Transnational Foods — Inventory Risk Dashboard</title>
+<title>Transnational Foods — Inventory Aging Dashboard</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
 <style>
@@ -83,10 +83,14 @@ tr.sub2 td{background:#f0f9ff;color:#475569}
 .pend p,.pend li{color:#78350f;font-size:12px;line-height:1.7}
 .pend ul{text-align:left;padding-left:20px;margin-top:8px}
 
-/* COMMENTARY */
-.comm{background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:14px;margin-bottom:16px}
-.comm label{font-size:11px;font-weight:700;color:#92400e;display:block;margin-bottom:5px}
-.comm textarea{width:100%;border:1px solid #fde68a;border-radius:4px;padding:8px;font-size:12px;font-family:Arial;background:#fffbeb;color:#1e293b;resize:vertical;outline:none;min-height:80px}
+/* KEY INSIGHTS */
+.insights{background:#f0f9ff;border-left:4px solid #1e3a5f;border-radius:0 8px 8px 0;padding:14px 18px;margin-bottom:16px}
+.insights .ins-title{font-size:11px;font-weight:700;color:#1e3a5f;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.insights ul{list-style:none;padding:0;margin:0}
+.insights li{font-size:12.5px;color:#1e293b;padding:5px 0;border-bottom:1px solid #bae6fd;display:flex;gap:8px;line-height:1.45}
+.insights li:last-child{border-bottom:none}
+.insights .blt{color:#1e3a5f;font-weight:700;flex-shrink:0}
+.insights .ins-foot{font-size:10px;color:#64748b;margin-top:10px;font-style:italic}
 
 /* CONTROLS */
 .tbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:8px;flex-wrap:wrap}
@@ -143,7 +147,7 @@ input:checked+.ts::before{transform:translateX(16px)}
 
 <div class="hdr">
   <div>
-    <h1>Transnational Foods — Inventory Risk Dashboard</h1>
+    <h1>Transnational Foods — Inventory Aging Dashboard</h1>
     <div class="sub">As of May 31, 2026 <span class="src-badge">Excel</span></div>
   </div>
   <div class="ri">Aging = days since receipt<br>Excel snapshot · May 31, 2026</div>
@@ -163,17 +167,13 @@ input:checked+.ts::before{transform:translateX(16px)}
 <div class="page act" id="page-0">
   <div class="kg" id="kpi0"></div>
 
-  <div class="g2">
-    <div class="card">
-      <div class="ct">90+ and 150+ Day Balance — 12-Month Trend
-        <span class="note">Activates with 2+ monthly snapshots</span>
-      </div>
-      <div id="p0-trend"></div>
+  <div id="p0-insights"></div>
+
+  <div class="card">
+    <div class="ct">90+ and 150+ Day Balance — 12-Month Trend
+      <span class="note">Activates with 2+ monthly snapshots</span>
     </div>
-    <div class="comm">
-      <label>📝 Management Commentary — What Changed &amp; Why</label>
-      <textarea placeholder="Example: '150+ balance is $X.XM, down 44% from the $6.4M peak. This period's movement is driven by two asparagus lots crossing the threshold — not broad deterioration. Write-down exposure (expiry ≤90d) is $0.9M, already in the disposition pipeline. DIO is X days vs. X days prior period...'"></textarea>
-    </div>
+    <div id="p0-trend"></div>
   </div>
 
   <div class="card">
@@ -626,45 +626,48 @@ const C = (() => {
         <div class="ks">≤30d: ${C.fM(r30)} &nbsp;·&nbsp; ≤60d: ${C.fM(r60)}
           <br><span style="font-size:10px;color:#92400e">→ Expiration Watch tab for lot detail</span></div></div>`;
 
-    // ── Auto-fill management commentary from computed data ──────────
+    // ── Key Insights card ────────────────────────────────────────────
     (function(){
-      const ta=document.querySelector('.comm textarea');
-      if(!ta||ta.value.trim())return; // don't overwrite if user has typed
+      const box=document.getElementById('p0-insights');
+      if(!box)return;
       const prev=HISTORY.length>=2?HISTORY[HISTORY.length-2]:null;
       const prev150=prev?(prev.buckets['150+']||0):null;
       const prevTot=prev?prev.total:null;
 
-      function momStr(cur,prior,noun){
+      function momBadge(cur,prior){
         if(!prior||prior===0)return '';
-        const pct=(cur-prior)/prior, dir=pct>=0?'up':'down';
-        return ` — ${dir} ${Math.abs(pct*100).toFixed(1)}% vs. prior month (${C.fM(prior)})`;
+        const pct=(cur-prior)/prior;
+        const dir=pct>=0?'▲':'▼';
+        const col=pct>=0?'#dc2626':'#16a34a';
+        return ` <span style="color:${col};font-weight:700">${dir} ${Math.abs(pct*100).toFixed(1)}% vs. prior month</span>`;
       }
 
       const top3=C.top150(all,3);
       const top3Cost=top3.reduce((s,i)=>s+i.cost,0);
       const top3Pct=a150>0?Math.round(top3Cost/a150*100):0;
-      const top3Names=top3.map(i=>i.ds.length>28?i.ds.slice(0,26)+'…':i.ds).join('; ');
+      const top3Names=top3.map(i=>i.ds.length>30?i.ds.slice(0,28)+'…':i.ds).join(', ');
 
-      // DIO trend sentence
-      const dioTrend=(()=>{
+      const dioLine=(()=>{
         if(HISTORY.length<2)return '';
         const mids={'<=30':15,'30-59':45,'60-89':75,'90-119':105,'120-149':135,'150+':180};
         const prevDio=prev?Math.round(Object.entries(prev.buckets).reduce((s,[b,v])=>s+(mids[b]||0)*v,0)/prev.total):null;
         if(!prevDio)return '';
         const delta=dioPf-prevDio;
-        return ` Portfolio DIO is ${dioPf} days (${delta>=0?'+':''}${delta} vs. prior month).`;
+        const col=delta>=0?'#dc2626':'#16a34a';
+        return `<li><span class="blt">▸</span> Portfolio DIO: <strong>${dioPf} days</strong> <span style="color:${col};font-weight:700">${delta>=0?'+':''}${delta} days vs. prior month</span> (cost-weighted avg days on hand across all lots)</li>`;
       })();
 
-      ta.value=
-`As of ${REPORT_DATE}, total inventory is ${C.fM(tc)} at book cost.${momStr(tc,prevTot,'total inventory')}
-
-150+ Day Balance: ${C.fM(a150)} (${C.fP(a150/tc)} of total)${momStr(a150,prev150,'150+ balance')}. Top 3 items (${top3Names}) account for ${top3Pct}% of this balance.
-
-90+ Day Balance: ${C.fM(a90)} (${C.fP(a90/tc)} of total). These lots are in the working pipeline but require monitoring.
-
-Expiration Watch: ${C.fM(r90)} expires within 90 days (${C.fM(r30)} critical ≤30d, ${C.fM(r60)} ≤60d — see Expiration Watch tab for lot detail).${dioTrend}
-
-[ADD: actions taken this period, disposition updates, incoming shipments affecting balance]`;
+      box.innerHTML=`<div class="insights">
+        <div class="ins-title">📊 Key Insights — ${REPORT_DATE}</div>
+        <ul>
+          <li><span class="blt">▸</span> Total inventory at book cost: <strong>${C.fM(tc)}</strong>${momBadge(tc,prevTot)}</li>
+          <li><span class="blt">▸</span> <strong>150+ Day balance: ${C.fM(a150)}</strong> (${C.fP(a150/tc)} of total)${momBadge(a150,prev150)} — top items: ${top3Names} (${top3Pct}% of 150+ balance)</li>
+          <li><span class="blt">▸</span> 90+ Day balance: <strong>${C.fM(a90)}</strong> (${C.fP(a90/tc)} of total) — lots in the working pipeline</li>
+          <li><span class="blt">▸</span> Expiring within 90 days: <strong>${C.fM(r90)}</strong> (${C.fM(r30)} critical ≤30d · ${C.fM(r60)} ≤60d) — see Expiration Watch tab</li>
+          ${dioLine}
+        </ul>
+        <div class="ins-foot">Auto-generated from current snapshot · For context, actions taken, and disposition updates — add notes to the published report</div>
+      </div>`;
     })();
 
     // Dual-line trend: 90+ and 150+
