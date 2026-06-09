@@ -142,6 +142,28 @@ input:checked+.ts::before{transform:translateX(16px)}
   .mc tr.tot,.mc tr.sub{display:none}
 }
 </style>
+<script>
+// ── PASSWORD GATE ─────────────────────────────────────────────────────
+// Change PASS_HASH to lock the dashboard with a new password.
+// To generate a new hash: open browser console and run:
+//   crypto.subtle.digest('SHA-256', new TextEncoder().encode('yourpassword'))
+//     .then(b => console.log([...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('')))
+const PASS_HASH = "41e28e954e933927c4ebcbe08b23a13ae57e3d4286864055dc7da2241486dc42";
+const SESSION_KEY = "tfi_inv_auth";
+async function checkAuth() {
+  if(sessionStorage.getItem(SESSION_KEY) === PASS_HASH) return;
+  let attempt = null;
+  while(true) {
+    attempt = prompt("Transnational Foods\nInventory Dashboard — Enter access code:");
+    if(attempt === null) { document.body.innerHTML='<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:Arial;color:#64748b">Access denied.</div>'; return; }
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(attempt));
+    const hash = [...new Uint8Array(buf)].map(x=>x.toString(16).padStart(2,'0')).join('');
+    if(hash === PASS_HASH) { sessionStorage.setItem(SESSION_KEY, PASS_HASH); return; }
+    alert("Incorrect code. Try again.");
+  }
+}
+document.addEventListener('DOMContentLoaded', checkAuth);
+</script>
 </head>
 <body>
 
